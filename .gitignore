@@ -1,0 +1,4 @@
+chroma_db/
+
+projector_data/metadata.tsv
+projector_data/vectors.tsv

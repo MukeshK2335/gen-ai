@@ -8,3 +8,5 @@ langchain-community
 langchain-openai
 python-dotenv
 langchain-huggingface
+rank-bm25 
+langchain-classic
