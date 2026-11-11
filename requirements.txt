@@ -1,0 +1,10 @@
+sentence-transformers
+matplotlib
+seaborn
+langchain-text-splitters
+chromadb
+langchain-chroma
+langchain-community
+langchain-openai
+python-dotenv
+langchain-huggingface
