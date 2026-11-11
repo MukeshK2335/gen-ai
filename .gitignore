@@ -2,3 +2,6 @@ chroma_db/
 
 projector_data/metadata.tsv
 projector_data/vectors.tsv
+__pycache__/ChunkManager.cpython-313.pyc
+__pycache__/RetrieveManager.cpython-313.pyc
+__pycache__/StorageManager.cpython-313.pyc

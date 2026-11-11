@@ -1,7 +1,6 @@
-from langchain_text_splitters import RecursiveCharacterTextSplitter, MarkdownHeaderTextSplitter
 from langchain_community.retrievers import BM25Retriever
 from langchain_classic.retrievers import EnsembleRetriever
-from langchain_core.documents import Document
+ 
 # from langchain_openai import OpenAIEmbeddings
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
@@ -10,134 +9,37 @@ from sentence_transformers import SentenceTransformer
 from langchain_community.retrievers import BM25Retriever
 from langchain_classic.retrievers import EnsembleRetriever
 from langchain_core.documents import Document
-
-def chunk_markdown(markdown_text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> list[str]:
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        separators=["### ", "## ", "# ", "\n\n", "\n", " ", ""],
-    )
-    return text_splitter.split_text(markdown_text)
-REPORT_PATH = "binance_hack.md"
+from sentence_transformers import CrossEncoder
+from ChunkManager import ChunkManager
+from StorageManager import StoreManager
+from RetrieveManager import RetrieveManager
+ 
+load_dotenv()
+ 
+REPORT_PATH = "tamil_nadu_government_cybersecurity_incident_report.md"
+ 
 with open(REPORT_PATH, "r", encoding="utf-8") as f:
     markdown_doc = f.read()
-chunks = chunk_markdown(markdown_doc)
-# for i, chunk in enumerate(chunks):
-#     print(f"...>>>>... chunk num{i} has length {len(chunk)}")
-#     print(chunk[:100])
  
-def embed_and_store(
-    chunks: list[str],
-    source: str = "binance_hack.md",
-    persist_dir: str = "./chroma_db",
-    collection_name: str = "binance_incident",
-):
-    print("...entering the conversion.....")
-    metadata_rows = []
-    documents = []
-    for i, chunk in enumerate(chunks):
-        heading_lines = [line.strip() for line in chunk.splitlines() if line.strip().startswith('#') ]
-        title = heading_lines[0] if heading_lines else "Untitled"
+chunkMan = ChunkManager()
+chunks = chunkMan.chunk_markdown(markdown_doc)
+storeMan = StoreManager()
  
-        metadata_rows.append({
-            "title": title,
-            "chunk_index": str(i),
-            "chunk_length": str(len(chunk))
-        })
-        documents.append(
-            Document(
-                page_content=chunk
-            )
-        )
-    # embeddings_model = OpenAIEmbeddings(model="text-embedding-3-large")
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    # chunk_embeddings = embeddings_model.embed_documents(chunks)  
-    vector_store = Chroma(
-        collection_name=collection_name,
-        embedding_function=embeddings,
-        persist_directory=persist_dir
-    )  
-    vector_store.reset_collection()
+for i, chunk in enumerate(chunks):
+    print(f"...>>>>... chunk num{i} has length {len(chunk)}")
+    print(chunk[:100])
  
-    vector_store.add_texts(
-        texts=chunks,
-        metadatas=metadata_rows,
-        ids=[f"chunk_{i}" for i in range(len(chunks))]
-    )
-    print(".....converted the chunks to embedding...")
+documents, vector_store = storeMan.embed_and_store(chunks)
+# search_results = query_chroma_db("How much money is lost due to the hack?")
+search_query = "How much money was reportedly stolen in the Tamil Nadu Government cyberattack?"
  
-    return documents, vector_store
+retrieveMan  = RetrieveManager()
+results = retrieveMan.query_hybrid(search_query, documents=documents, vector_store=vector_store, n_results = 3)
  
-def query_chroma_db(
-
-    query: str,
-
-    collection_name: str = "binance_incident",
-
-    persist_dir: str = "./chroma_db",
-
-    n_results: int = 3
-
-):
-
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+final_results = retrieveMan.rerank_documents("How much money is lost due to the hack?", results)
  
-    vector_store = Chroma(
-
-            collection_name=collection_name,
-
-            embedding_function=embeddings,
-
-            persist_directory=persist_dir
-
-        )  
+print(final_results)
  
-    retriever = vector_store.as_retriever(
-
-        search_type ="similarity",
-
-        search_kwargs ={
-
-            "k": n_results
-
-        }
-
-    )   
-
-    retrieved_documents = retriever.invoke(query)
-
-    return retrieved_documents
-def query_hybrid(query: str,documents: list[Document],vector_store: Chroma,n_results: int = 3):
-    # 1. Dense retriever (Chroma)
-    chroma_retriever = vector_store.as_retriever(
-        search_type="similarity",
-        search_kwargs={
-            "k": n_results
-        }
-    )
- 
-    # 2. Sparse retriever (BM25)
-    bm25_retriever = BM25Retriever.from_documents(
-        documents,
-        k=n_results
-    )
- 
-        # 3. Combine both retrievers
-    ensemble_retriever = EnsembleRetriever(
-        retrievers=[
-            bm25_retriever,
-            chroma_retriever
-        ],
-        weights=[0.5, 0.5]
-    )
-    # 4. Retrieve documents
-    results = ensemble_retriever.invoke(query)
-    return results
-documents, vector_store = embed_and_store(chunks)
-search_query = "What is the value of the attack in binance?"
-search_results = query_hybrid(search_query, documents=documents, vector_store=vector_store, n_results = 3)
-for i, res in enumerate(search_results):
-    print(f"\n*** Result {i} ***")
-    print(f"Content:\n{res.page_content}")
- 
- 
+# for i, res in enumerate(results):
+#     print(f"\n*** Result {i} ***")
+#     print(f"Content:\n{res.page_content}")
