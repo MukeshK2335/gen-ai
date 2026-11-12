@@ -1,3 +1,7 @@
 langchain-google-genai
 langfuse
 langchain
+presidio_analyzer
+presidio_anonymizer
+spacy
+download

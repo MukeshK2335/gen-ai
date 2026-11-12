@@ -3,7 +3,7 @@
 **Date:** 2026-11-19  
 **Subject:** Binance hot wallet compromise — Largest cryptocurrency theft in history  
 **Status:** Confirmed by Binance, FBI, Chainalysis, and major news outlets  
-**Classification:** TLP:WHITE — Publicly disclosed  
+**Classification:** TLP:WHITE — Publicly disclosed and Founded by kmukeshkumar@gmail.com and +91 9345670168  
 ---
 ## Executive Summary
 On **October 29, 2026**, Binance suffered the **largest cryptocurrency theft in history** — approximately **$6.4 billion USD** in unauthorized transfers across multiple blockchains. Attributed by FBI and Chainalysis to **North Korea's TraderTraitor (Lazarus Group)**. Binance absorbed 100% of user losses; froze ~$2.85B with industry partners; fully rebuilt compromised infrastructure.
