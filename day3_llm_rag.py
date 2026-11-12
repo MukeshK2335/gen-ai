@@ -62,3 +62,18 @@ response = chain.invoke({
                                   "prompt_version": prompt_det["version"],
                               }})
 print(response)
+def ask_question(quest: str) -> str:    
+    search_results = retrieveMan.query_hybrid(quest, documents, vector_store)
+    final_result = retrieveMan.rerank_documents(quest, search_results)
+    response = chain.invoke({
+                "question": quest,
+                "ctxt":final_result
+                    },        config={"callbacks": [langfuse_handler],
+                                "metadata" :
+                                {
+                                    "langfuse_session_id": "binance_session_1",
+                                    "langfuse_user_id" :"Mukesh K",
+                                    "prompt_name": prompt_det["name"],
+                                    "prompt_version": prompt_det["version"],
+                                }})
+    return response

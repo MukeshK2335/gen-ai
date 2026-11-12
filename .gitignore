@@ -9,3 +9,6 @@ __pycache__/StorageManager.cpython-313.pyc
 __pycache__/RedactManager.cpython-313.pyc
 __pycache__/config.cpython-313.pyc
 __pycache__/prompts.cpython-313.pyc
+__pycache__/day1_rag.cpython-313.pyc
+__pycache__/day3_fast.cpython-313.pyc
+__pycache__/day3_llm_rag.cpython-313.pyc
