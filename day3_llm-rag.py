@@ -11,12 +11,16 @@ from RedactManager import RedactManager
 from ChunkManager import ChunkManager
 from StorageManager import StoreManager
 from RetrieveManager import RetrieveManager
+from config import load_config
+from prompts import get_prmpt
  
 load_dotenv()
- 
-chunkMan = ChunkManager()
+prompt_det = get_prmpt("binance_qa",1)
+config = load_config()
+chunkMan = ChunkManager(config)
 storeMan = StoreManager()
-retrieveMan = RetrieveManager()
+retrieveMan = RetrieveManager(config)
+
 def debug_step(data):
 
     print("...inspecting...")
@@ -37,7 +41,7 @@ documents, vector_store = storeMan.embed_and_store(chunks)
 question = "How much was lost in the binance hack?"
 search_results = retrieveMan.query_hybrid(question, documents, vector_store)
 final_result = retrieveMan.rerank_documents(question, search_results)
-prompt = ChatPromptTemplate.from_template("Answer the question:\"{question}\", based on the context: {ctxt}")
+prompt = ChatPromptTemplate.from_template(prompt_det["system"])
 convert_upper=RunnableLambda(lambda x: x.upper())
 llm=ChatGoogleGenerativeAI(
     model="gemini-3.1-flash-lite",temperature=0)
@@ -46,5 +50,15 @@ parser=StrOutputParser()
 
 
 chain=prompt|llm|debug_step|parser|debug_step|convert_upper
-response=chain.invoke({"question": question, "ctxt": final_result}, config={"callbacks": [langfuse_handler]})
+response = chain.invoke({
+            "question": question,
+            "ctxt":final_result
+                },        config={"callbacks": [langfuse_handler],
+                            "metadata" :
+                              {
+                                  "langfuse_session_id": "binance_session_1",
+                                  "langfuse_user_id" :"Mueksh",
+                                  "prompt_name": prompt_det["name"],
+                                  "prompt_version": prompt_det["version"],
+                              }})
 print(response)

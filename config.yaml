@@ -1,0 +1,9 @@
+chunking:
+  chunk_size: 1000
+  chunk_overlap: 200
+ 
+embedding:  
+  model_name: "sentence-transformers/all-MiniLM-L6-v2"
+ 
+results:
+  top: 3

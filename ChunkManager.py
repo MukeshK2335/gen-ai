@@ -1,10 +1,13 @@
 from langchain_text_splitters import RecursiveCharacterTextSplitter, MarkdownHeaderTextSplitter
  
 class ChunkManager:
-    def chunk_markdown(self, markdown_text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> list[str]:
+    def __init__(self, config: dict):
+        self.chn_config_size = config["chunking"]["chunk_size"]
+        self.chn_config_overlap = config["chunking"]["chunk_overlap"]
+    def chunk_markdown(self, markdown_text: str) -> list[str]:
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
+            chunk_size=self.chn_config_size,
+            chunk_overlap=self.chn_config_overlap,
             separators=["### ", "## ", "# ", "\n\n", "\n", " ", ""],
         )
         return text_splitter.split_text(markdown_text)

@@ -12,6 +12,8 @@ from langchain_core.documents import Document
 from sentence_transformers import CrossEncoder
  
 class RetrieveManager:
+    def __init__(self, config: dict):
+            self.chn_config_top_n = config["results"]["top"]
     def query_chroma_db(
             self,
         query: str,
@@ -74,5 +76,5 @@ class RetrieveManager:
         scores = reranker.predict(pairs)
         doc_score_pairs = list(zip(documents, scores))
         doc_score_pairs.sort(key=lambda pair: pair[1], reverse=True)
-        top_pairs = doc_score_pairs[:top_n]
+        top_pairs = doc_score_pairs[:self.chn_config_top_n]
         return [doc for doc, score in top_pairs]

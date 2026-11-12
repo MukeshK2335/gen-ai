@@ -7,3 +7,5 @@ __pycache__/RetrieveManager.cpython-313.pyc
 __pycache__/StorageManager.cpython-313.pyc
 .env
 __pycache__/RedactManager.cpython-313.pyc
+__pycache__/config.cpython-313.pyc
+__pycache__/prompts.cpython-313.pyc
