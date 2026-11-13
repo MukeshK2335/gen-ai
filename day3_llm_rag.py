@@ -47,9 +47,14 @@ llm=ChatGoogleGenerativeAI(
     model="gemini-3.1-flash-lite",temperature=0)
 
 parser=StrOutputParser()
+class CustomReponse(BaseModel):
+    msg : str = Field(description = "The short answer")
+    reference: str | None = None
+ 
+llm_with_struture = llm.with_structured_output(CustomReponse)
 
 
-chain=prompt|llm|debug_step|parser|debug_step|convert_upper
+chain  = prompt | llm_with_struture
 response = chain.invoke({
             "question": question,
             "ctxt":final_result

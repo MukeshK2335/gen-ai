@@ -29,4 +29,4 @@ def create_greeting(user: User):
 @app.post("/ask")
 def create_greeting(user: User):
     answer = ask_question(user.quest)
-    return {"msg" : f"{user.nam} answer: {answer}"}
+    return answer
