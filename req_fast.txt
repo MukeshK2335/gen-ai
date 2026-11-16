@@ -3,3 +3,4 @@ uvicorn
 langchain_tavily
 pytest
 httpx
+deepeval

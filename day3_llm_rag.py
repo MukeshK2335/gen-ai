@@ -54,7 +54,7 @@ class CustomReponse(BaseModel):
 llm_with_struture = llm.with_structured_output(CustomReponse)
 
 
-chain  = prompt | llm_with_struture
+chain  = prompt | llm | parser
 response = chain.invoke({
             "question": question,
             "ctxt":final_result
@@ -67,18 +67,39 @@ response = chain.invoke({
                                   "prompt_version": prompt_det["version"],
                               }})
 print(response)
-def ask_question(quest: str) -> str:    
+def ask_question(quest: str):    
+
     search_results = retrieveMan.query_hybrid(quest, documents, vector_store)
+
     final_result = retrieveMan.rerank_documents(quest, search_results)
+
     response = chain.invoke({
+
                 "question": quest,
+
                 "ctxt":final_result
+
                     },        config={"callbacks": [langfuse_handler],
+
                                 "metadata" :
+
                                 {
+
                                     "langfuse_session_id": "binance_session_1",
-                                    "langfuse_user_id" :"Mukesh K",
+
+                                    "langfuse_user_id" :"Nalla",
+
                                     "prompt_name": prompt_det["name"],
+
                                     "prompt_version": prompt_det["version"],
+
                                 }})
-    return response
+
+    return {
+
+        "answer": response,
+
+        "retrieval_context": final_result[0].page_content
+
+    }
+ 
