@@ -28,5 +28,11 @@ def create_greeting(user: User):
 #     return {"msg" : f"{user.name} asked: {user.quest}"}
 @app.post("/ask")
 def create_greeting(user: User):
-    answer = ask_question(user.quest)
-    return answer
+    try:
+        answer = ask_question(user.quest)
+        return {"answer": answer}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )

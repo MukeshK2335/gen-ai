@@ -1,5 +1,5 @@
 chroma_db/
-
+Day
 projector_data/metadata.tsv
 projector_data/vectors.tsv
 __pycache__/ChunkManager.cpython-313.pyc
@@ -12,3 +12,4 @@ __pycache__/prompts.cpython-313.pyc
 __pycache__/day1_rag.cpython-313.pyc
 __pycache__/day3_fast.cpython-313.pyc
 __pycache__/day3_llm_rag.cpython-313.pyc
+__pycache__/test_main.cpython-313-pytest-9.2.0.pyc
