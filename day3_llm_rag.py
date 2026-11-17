@@ -68,38 +68,26 @@ response = chain.invoke({
                               }})
 print(response)
 def ask_question(quest: str):    
-
     search_results = retrieveMan.query_hybrid(quest, documents, vector_store)
-
     final_result = retrieveMan.rerank_documents(quest, search_results)
-
     response = chain.invoke({
-
                 "question": quest,
-
                 "ctxt":final_result
-
                     },        config={"callbacks": [langfuse_handler],
-
                                 "metadata" :
-
                                 {
-
                                     "langfuse_session_id": "binance_session_1",
-
                                     "langfuse_user_id" :"Nalla",
-
                                     "prompt_name": prompt_det["name"],
-
                                     "prompt_version": prompt_det["version"],
-
                                 }})
-
+    # return response
+    trace_id = langfuse_handler.last_trace_id
+    print(f"............... {trace_id}")
     return {
-
         "answer": response,
-
-        "retrieval_context": final_result[0].page_content
-
+        "retrieval_context": final_result[0].page_content,
+        "trace_id": trace_id
     }
- 
+
+#print(response)

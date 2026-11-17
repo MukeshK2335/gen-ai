@@ -1,12 +1,9 @@
-from fastapi import FastAPI,HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel, Field
 from day3_llm_rag import ask_question
- 
+from day3_llm_rag_copy import ChatManager
+
 app = FastAPI()
- 
-@app.get("/health")
-def health_check():
-    return {"status" : "ok"}
 
 @app.get("/hello/{name}")
 def say_hello(name: str):
@@ -16,20 +13,28 @@ def say_hello(name: str):
             detail="Name must be at least 4 characters"
         )
     return {"msg" : f"Hello {name}"}
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
+#uvicorn hello_fast:app
+
+"""@app.get("/hello/{name}")
+def say_hello(name: str):
+    return {"msg" : f"Hello {name}"}"""
+
 class User(BaseModel):
     nam: str = Field(min_length=4)
     quest: str = Field(min_length=25)
+
+
+def get_chat_manager() -> ChatManager:
+    return ChatManager()    
  
-@app.post("/hello")
-def create_greeting(user: User):
-    return {"msg" : f"Hello {user.nam}"}
-# @app.post("/ask")
-# def create_greeting(user: User):
-#     return {"msg" : f"{user.name} asked: {user.quest}"}
 @app.post("/ask")
-def create_greeting(user: User):
+def create_greeting(user: User, chatMan : ChatManager = Depends(get_chat_manager)):
     try:
-        answer = ask_question(user.quest)
+        answer = chatMan.ask_question(user.quest)
         return {"answer": answer}
     except Exception as e:
         raise HTTPException(
