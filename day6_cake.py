@@ -4,36 +4,52 @@ from langchain.tools import tool
 from langgraph.graph import StateGraph
 from langgraph.graph import START, END
 from langchain.tools import tool
-from langchain_google_genai import ChatGoogleGenerativeAI
-from dotenv import load_dotenv
-load_dotenv()
 import sqlite3
+from dotenv import load_dotenv
+
+from langchain_google_genai import ChatGoogleGenerativeAI
+load_dotenv()
+ 
+from langfuse.langchain import CallbackHandler
+langfuse_handler = CallbackHandler()
 
 class AgentState(TypedDict):
       user: str
       desired_flavour: str
-      flavour_in_stock: str
+      flavours_in_stock : str
       federated_response : int
       steps_taken: Annotated[list, op_add]
-
+      order_decision: str
+      order_status: str
 def fetch_user_pref_node(state: AgentState) -> dict:
-    tool_out = fetch_user_data.invoke({"user_name" : state["user"]})
+    tool_out = fetch_user_data.invoke({"user_name" :state["user"]})
     print(f"response from sql tool: {tool_out}")
     return {          
-      "desired_flavour": tool_out,
-      "steps_taken":["user_pref_fetched"]
+            "desired_flavour": tool_out,
+            "steps_taken" : ["user_data_fetch"]
             }         
- 
  
 def fetch_inv_node(state: AgentState) -> dict:
     tool_out = fetch_inventory_data.invoke({})
     print(f"response from sql tool: {tool_out}")
     return {          
-            "flavour_in_stock": tool_out,
-            "steps_taken":["inventory_fetched"]
-            }
-         
+            "flavours_in_stock": tool_out,
+            "steps_taken" : ["inv_fetch"]
+            }     
 
+def order_confirmation_router(state : AgentState):
+    decision = state["order_decision"]
+    if decision == "yes":
+        print("user accepted to make the order")
+        return "place_order"
+    return "end"
+ 
+def place_order_node(state: AgentState):
+    print("order created")
+    return {
+        "order_status" :"order approved and placed",
+        "steps_taken" : ["order created"]
+    }
 @tool
 def fetch_user_data(user_name: str) -> str:
     """Fetches a user's past orders of cake flavour and order value."""    
@@ -51,39 +67,23 @@ def fetch_user_data(user_name: str) -> str:
     finally:
         conn.close() 
 
-
 @tool
-
 def fetch_inventory_data() -> str:
-
     """Fetches available flavour from the inventory table."""    
-
     conn = sqlite3.connect("cake.db")
-
     cursor = conn.cursor()    
-
     try:
-
         cursor.execute("SELECT Name, Price, Stock  FROM inventory")
-
         rows = cursor.fetchall() 
-
         if rows:
-
             inv_details = "\n".join([f"{itm[0]} costs {itm[1]} and available quantity is {itm[2]}"  for itm in rows])   
-
             return inv_details
-
         return f"No inventory data found"        
-
     except sqlite3.Error as e:
-
         return f"Database error encountered: {str(e)}"
-
     finally:
-
-        conn.close()
-
+        conn.close()   
+        
  
 preference_llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite")
 inventory_llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite")
@@ -97,72 +97,46 @@ inventory_llm_with_tools = inventory_llm.bind_tools(
     [fetch_inventory_data]
 )
 
-
 def preference_llm_node(state: AgentState):    
-
     messages_to_send = [
-
             {
-
                 "role": "system",
-
                 "content": """
-
                            You are the Preference LLM.
  
                             You have received the result from the preference database tool.
  
                             Analyze the tool result and determine the user's preferred
-
                             cake flavour.
  
                             Do not call the tool again.
  
                             If there is valid preference information, respond with
-
                             the preferred flavour and relevant information.
  
                             If no preference information was found, clearly say so.
-
                             """
-
             },
-
             {
-
                 "role": "user",
-
                 "content": f"""Find the cake flavour preference for user:{state["user"]}"""
-
             }
-
         ]
-
     response = preference_llm_with_tools.invoke(
-
         messages_to_send
-
     )
  
     if response.tool_calls:
-
         print("\nPreference LLM requested tool:")
-
         print(response.tool_calls)
-
         return {
-
              "steps_taken": [response]
-
         }
-
     return {
-
         "steps_taken": [response],
-
         "desired_flavour": response.content
-
     }
+
 def inventory_llm_node(state: AgentState):    
     messages_to_send = [
             {
@@ -202,16 +176,18 @@ def federated_llm_node(state: AgentState):
                 "content": """
                            You are the federated LLM who gets data from two other agents.
                             The results are available as   "desired_flavour",  " flavours_in_stock"
+ 
                             You can generate the appropriate response cake ordering for the user.
+                            note: desired_falvour has details about his past order. You have suggest his next order
  
                             """
             },
             {
                 "role": "user",
                 "content": f"""user :  {state['user']} 
-                        prefered falvour : {state['desired_flavour']}
-                        stock details : {state['flavour_in_stock']}
-                        provide thefinal recommendation
+                        desired_flavour : {state['desired_flavour']}
+                        flavours_in_stock : {state['flavours_in_stock']}
+                        provide the final recommendation
                         """
             }
         ]
@@ -239,18 +215,32 @@ def inventory_router(state: AgentState):
         print("stock is already available. So move to next")
         return "fed_llm"
     return  "end"
+from langgraph.types import interrupt, Command
  
-
-    
+def order_confirmation_node(state: AgentState):
+    print("waiting for approval")             
+    decision = interrupt({
+        "message": "Do you want to go ahead with the order?",
+        "recommendation":state["federated_response"],
+        "options":["yes", "no"]
+    })   
  
- 
+    print(f"\nuser response is {decision} ")    
+    return {
+        "order_decision" : str(decision).strip().lower(),
+        "steps_taken" :["human decision"]
+    }   
 builder = StateGraph(AgentState)  
+ 
 builder.add_node("pref_llm_node", preference_llm_node)
 builder.add_node("inv_llm_node", inventory_llm_node)
-builder.add_node("pref_tool_node",fetch_user_pref_node)
+builder.add_node("pref_tool_node", fetch_user_pref_node)
 builder.add_node("inv_tool_node", fetch_inv_node)
 builder.add_node("fed_llm_node", federated_llm_node)
+builder.add_node("order_confirmation", order_confirmation_node)
+builder.add_node("place_order", place_order_node)
 
+from langgraph.graph import START, END
 builder.add_edge(START, "pref_llm_node") 
 # builder.add_edge("pref_llm_node", "inv_llm_node")
 builder.add_conditional_edges(
@@ -263,7 +253,7 @@ builder.add_conditional_edges(
     }
 )
 builder.add_edge("pref_tool_node", "inv_llm_node") 
-#builder.add_edge("inv_llm_node", "inv_tool_node") 
+# builder.add_edge("inv_llm_node", "inv_tool_node") 
 builder.add_conditional_edges(
     "inv_llm_node",
     inventory_router,
@@ -273,32 +263,57 @@ builder.add_conditional_edges(
         "end" : END 
     }
 )
-builder.add_edge("inv_tool_node", "fed_llm_node")
-builder.add_edge("fed_llm_node", END)
+builder.add_edge("inv_tool_node", "fed_llm_node") 
+builder.add_edge( "fed_llm_node", "order_confirmation") 
+builder.add_conditional_edges(
+    "order_confirmation",
+    order_confirmation_router,
+    {
+        "place_order": "place_order",
+        "end" : END 
+    }
+)
+builder.add_edge("place_order", END)
 
-app  = builder.compile()
+from langgraph.checkpoint.memory import InMemorySaver
+ 
+checkpoint = InMemorySaver()
+app  = builder.compile(checkpointer=checkpoint)
+
+initial_state ={"user":"nickith", "steps_taken": []}
+
+# final_state = app.invoke(initial_state)
+
+ 
 from IPython.display import Image, display
 png_data = app.get_graph().draw_mermaid_png()
  
 with open("langgraph_flow.png", "wb") as f:
     f.write(png_data)
 
-initial_state ={"user": "nickith", "steps_taken": []}
-
-# final_state = app.invoke(initial_state)
-from dotenv import load_dotenv
-load_dotenv()
- 
-from langfuse.langchain import CallbackHandler
-langfuse_handler = CallbackHandler()
- 
 langfuse_config = {"callbacks" : [langfuse_handler],
+                   "configurable" : {
+                       "thread_id": "cake_order_001"
+                   },
                    "metadata" :
                                 {
                                     "langfuse_session_id": "langgraph_session",
-                                    "langfuse_user_id" :"Nalla"
+                                    "langfuse_user_id" :"manojkannas"
                                 }
                     }
  
 final_state = app.invoke(initial_state, config = langfuse_config)
-print(final_state)
+# print(final_state)
+if  "__interrupt__" in final_state:
+    # print("..>.." * 50)
+    # print("interrupt detected")
+    interrupt_data = final_state["__interrupt__"][0].value
+    print("..>.." * 15)
+    # print(interrupt_data)
+    print("Recommendation",interrupt_data["recommendation"] )
+    print("Options:",interrupt_data["options"])
+ 
+    human_response = input("Do you want to place the order?") 
+    print(f"User response : {human_response}")
+    final_state = app.invoke(Command(resume=human_response), config = langfuse_config)
+    print(final_state)
