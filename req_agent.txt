@@ -6,3 +6,6 @@ langchain-google-genai
 langfuse
 langchain
 ipython
+fastmcp
+mcp[cli]
+langchain[mcp]

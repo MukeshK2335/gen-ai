@@ -17,6 +17,7 @@ class AgentState(TypedDict):
       user: str
       desired_flavour: str
       flavours_in_stock : str
+      order_flavour: str
       federated_response : int
       steps_taken: Annotated[list, op_add]
       order_decision: str
@@ -45,10 +46,17 @@ def order_confirmation_router(state : AgentState):
     return "end"
  
 def place_order_node(state: AgentState):
-    print("order created")
+
+    result = insert_order.invoke({
+        "user_name": state["user"],
+        "flavour": state["order_flavour"]
+    })
+
+    print(result)
+
     return {
-        "order_status" :"order approved and placed",
-        "steps_taken" : ["order created"]
+        "order_status": result,
+        "steps_taken": ["order inserted into database"]
     }
 @tool
 def fetch_user_data(user_name: str) -> str:
@@ -81,6 +89,54 @@ def fetch_inventory_data() -> str:
         return f"No inventory data found"        
     except sqlite3.Error as e:
         return f"Database error encountered: {str(e)}"
+    finally:
+        conn.close()
+@tool
+def insert_order(user_name: str, flavour: str) -> str:
+    """Insert a customer's confirmed cake order into the orders table."""
+
+    conn = sqlite3.connect("cake.db")
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            SELECT Name, Price, Stock
+            FROM inventory
+            WHERE LOWER(Name) = LOWER(?)
+            """,
+            (flavour.strip(),)
+        )
+
+        item = cursor.fetchone()
+
+        if item is None:
+            return f"Order failed: {flavour} is not available in inventory."
+
+        cake_name, price, stock = item
+
+        if stock <= 0:
+            return f"Order failed: {cake_name} is out of stock."
+
+        cursor.execute(
+            """
+            INSERT INTO orders (user, flavour, price)
+            VALUES (?, ?, ?)
+            """,
+            (user_name, cake_name, price)
+        )
+
+        conn.commit()
+
+        return (
+            f"Order successfully placed for {user_name}. "
+            f"Cake: {cake_name}, Price: Rs. {price}"
+        )
+
+    except sqlite3.Error as e:
+        conn.rollback()
+        return f"Database error: {str(e)}"
+
     finally:
         conn.close()   
         
@@ -169,33 +225,49 @@ def inventory_llm_node(state: AgentState):
         "steps_taken": [response],
         "flavours_in_stock": response.content
     }
-def federated_llm_node(state: AgentState):    
+def federated_llm_node(state: AgentState):
+
     messages_to_send = [
-            {
-                "role": "system",
-                "content": """
-                           You are the federated LLM who gets data from two other agents.
-                            The results are available as   "desired_flavour",  " flavours_in_stock"
- 
-                            You can generate the appropriate response cake ordering for the user.
-                            note: desired_falvour has details about his past order. You have suggest his next order
- 
-                            """
-            },
-            {
-                "role": "user",
-                "content": f"""user :  {state['user']} 
-                        desired_flavour : {state['desired_flavour']}
-                        flavours_in_stock : {state['flavours_in_stock']}
-                        provide the final recommendation
-                        """
-            }
-        ]
-    response = federated_llm.invoke(
-        messages_to_send)
+        {
+            "role": "system",
+            "content": """
+            You are the cake ordering recommendation agent.
+
+            Use the customer's previous order and available inventory
+            to recommend one cake flavour.
+
+            Choose a flavour that exists in the inventory.
+
+            Return your answer in this format:
+
+            Recommended flavour: <exact inventory flavour name>
+            Reason: <short explanation>
+            """
+        },
+        {
+            "role": "user",
+            "content": f"""
+            User: {state['user']}
+            Previous preference: {state['desired_flavour']}
+            Available inventory: {state['flavours_in_stock']}
+            """
+        }
+    ]
+
+    response = federated_llm.invoke(messages_to_send)
+    response_text = response.content[0]["text"]
+
+    recommended_flavour = ""
+
+    for line in response_text.splitlines():
+        if line.lower().startswith("recommended flavour:"):
+            recommended_flavour = line.split(":", 1)[1].strip()
+            break
+
     return {
         "steps_taken": [response],
-        "federated_response": response.content[0]["text"]
+        "federated_response": response_text,
+        "order_flavour": recommended_flavour
     }
 def preference_router(state: AgentState):
     last_message = state["steps_taken"][-1]
