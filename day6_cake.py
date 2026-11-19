@@ -4,6 +4,13 @@ from langchain.tools import tool
 from langgraph.graph import StateGraph
 from langgraph.graph import START, END
 from langchain.tools import tool
+import asyncio
+import sys
+from pathlib import Path
+ 
+from langchain.mcp import MCPAdapter
+from pathlib import Path
+import asyncio
 import sqlite3
 from dotenv import load_dotenv
 
@@ -12,6 +19,25 @@ load_dotenv()
  
 from langfuse.langchain import CallbackHandler
 langfuse_handler = CallbackHandler()
+# server_path = Path("day7_cake_mcp_server.py")
+SERVER_URL = "http://127.0.0.1:8000/mcp"
+ 
+async def load_cake_tools():
+
+    async with MCPAdapter(SERVER_URL) as adapter:
+
+        tools = await adapter.list_tools()
+
+        tool_dictionary = {}
+
+        for tool in tools:
+
+            tool_dictionary[tool.name] = tool    
+
+        return tool_dictionary
+ 
+mcp_tools = asyncio.run(load_cake_tools())
+ 
 
 class AgentState(TypedDict):
       user: str
@@ -22,21 +48,36 @@ class AgentState(TypedDict):
       steps_taken: Annotated[list, op_add]
       order_decision: str
       order_status: str
-def fetch_user_pref_node(state: AgentState) -> dict:
-    tool_out = fetch_user_data.invoke({"user_name" :state["user"]})
-    print(f"response from sql tool: {tool_out}")
-    return {          
+# def fetch_user_pref_node(state: AgentState) -> dict:
+#     tool_out = fetch_user_data.invoke({"user_name" :state["user"]})
+#     print(f"response from sql tool: {tool_out}")
+#     return {          
+#             "desired_flavour": tool_out,
+#             "steps_taken" : ["user_data_fetch"]
+#             }         
+async def fetch_user_pref_node(state: AgentState) -> dict:
+        tool_out = await mcp_tools["fetch_user_data"].ainvoke({
+          "user_name": state["user"]
+        })
+        return {          
             "desired_flavour": tool_out,
-            "steps_taken" : ["user_data_fetch"]
-            }         
+            "steps_taken" :["user_pref_fetch"]
+            }      
  
-def fetch_inv_node(state: AgentState) -> dict:
-    tool_out = fetch_inventory_data.invoke({})
-    print(f"response from sql tool: {tool_out}")
-    return {          
+ 
+# def fetch_inv_node(state: AgentState) -> dict:
+#     tool_out = fetch_inventory_data.invoke({})
+#     print(f"response from sql tool: {tool_out}")
+#     return {          
+#             "flavours_in_stock": tool_out,
+#             "steps_taken" : ["inv_fetch"]
+#             }     
+async def fetch_inv_node(state: AgentState) -> dict:
+        tool_out = await mcp_tools["fetch_inventory_data"].ainvoke({})
+        return {          
             "flavours_in_stock": tool_out,
-            "steps_taken" : ["inv_fetch"]
-            }     
+            "steps_taken" :["inv_fetch"]
+            }   
 
 def order_confirmation_router(state : AgentState):
     decision = state["order_decision"]
@@ -58,39 +99,7 @@ def place_order_node(state: AgentState):
         "order_status": result,
         "steps_taken": ["order inserted into database"]
     }
-@tool
-def fetch_user_data(user_name: str) -> str:
-    """Fetches a user's past orders of cake flavour and order value."""    
-    conn = sqlite3.connect("cake.db")
-    cursor = conn.cursor()    
-    try:
-        cursor.execute("SELECT user, flavour, price  FROM orders WHERE user = ?", (user_name,))
-        rows = cursor.fetchall() 
-        if rows:
-            orderHistory = "\n".join([f"{itm[0]} ordered {itm[1]} for Rs. {itm[2]}"  for itm in rows])   
-            return orderHistory
-        return f"No user data found for ID: {user_name}"        
-    except sqlite3.Error as e:
-        return f"Database error encountered: {str(e)}"
-    finally:
-        conn.close() 
 
-@tool
-def fetch_inventory_data() -> str:
-    """Fetches available flavour from the inventory table."""    
-    conn = sqlite3.connect("cake.db")
-    cursor = conn.cursor()    
-    try:
-        cursor.execute("SELECT Name, Price, Stock  FROM inventory")
-        rows = cursor.fetchall() 
-        if rows:
-            inv_details = "\n".join([f"{itm[0]} costs {itm[1]} and available quantity is {itm[2]}"  for itm in rows])   
-            return inv_details
-        return f"No inventory data found"        
-    except sqlite3.Error as e:
-        return f"Database error encountered: {str(e)}"
-    finally:
-        conn.close()
 @tool
 def insert_order(user_name: str, flavour: str) -> str:
     """Insert a customer's confirmed cake order into the orders table."""
@@ -146,11 +155,11 @@ inventory_llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite")
 federated_llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite")
  
 preference_llm_with_tools = preference_llm.bind_tools(
-    [fetch_user_data]
+    [mcp_tools["fetch_user_data"]]
 )
  
 inventory_llm_with_tools = inventory_llm.bind_tools(
-    [fetch_inventory_data]
+    [mcp_tools["fetch_inventory_data"]]
 )
 
 def preference_llm_node(state: AgentState):    
@@ -336,15 +345,15 @@ builder.add_conditional_edges(
     }
 )
 builder.add_edge("inv_tool_node", "fed_llm_node") 
-builder.add_edge( "fed_llm_node", "order_confirmation") 
-builder.add_conditional_edges(
-    "order_confirmation",
-    order_confirmation_router,
-    {
-        "place_order": "place_order",
-        "end" : END 
-    }
-)
+builder.add_edge( "fed_llm_node", END) 
+# builder.add_conditional_edges(
+#     "order_confirmation",
+#     order_confirmation_router,
+#     {
+#         "place_order": "place_order",
+#         "end" : END 
+#     }
+# )
 builder.add_edge("place_order", END)
 
 from langgraph.checkpoint.memory import InMemorySaver
@@ -374,18 +383,30 @@ langfuse_config = {"callbacks" : [langfuse_handler],
                                 }
                     }
  
-final_state = app.invoke(initial_state, config = langfuse_config)
+# final_state = app.invoke(initial_state, config = langfuse_config)
 # print(final_state)
-if  "__interrupt__" in final_state:
-    # print("..>.." * 50)
-    # print("interrupt detected")
-    interrupt_data = final_state["__interrupt__"][0].value
-    print("..>.." * 15)
-    # print(interrupt_data)
-    print("Recommendation",interrupt_data["recommendation"] )
-    print("Options:",interrupt_data["options"])
+# if  "__interrupt__" in final_state:
+#     # print("..>.." * 50)
+#     # print("interrupt detected")
+#     interrupt_data = final_state["__interrupt__"][0].value
+#     print("..>.." * 15)
+#     # print(interrupt_data)
+#     print("Recommendation",interrupt_data["recommendation"] )
+#     print("Options:",interrupt_data["options"])
  
-    human_response = input("Do you want to place the order?") 
-    print(f"User response : {human_response}")
-    final_state = app.invoke(Command(resume=human_response), config = langfuse_config)
-    print(final_state)
+#     human_response = input("Do you want to place the order?") 
+#     print(f"User response : {human_response}")
+#     final_state = app.invoke(Command(resume=human_response), config = langfuse_config)
+#     print(final_state)
+async def place_order_graph(name: str): 
+    # final_state = await app.ainvoke(initial_state, config=langfuse_config) 
+    # print(final_state)
+    # return final_state["federated_response"]
+    async for chunk in app.astream(
+            {"user": name, "steps_taken": []},
+            config=langfuse_config,
+            stream_mode="updates"
+        ):
+            yield chunk
+if __name__ == "__main__":
+    asyncio.run(place_order_graph("nickith"))
